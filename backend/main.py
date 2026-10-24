@@ -447,3 +447,139 @@ def save_my_timetable(req: SaveTimetableRequest, current_user: Dict[str, Any] = 
         return {"status": "success", "message": "Timetable saved"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+# --- Phase 3: Availability ---
+
+WORKING_HOURS_START = os.getenv("WORKING_HOURS_START", "08:00")
+WORKING_HOURS_END = os.getenv("WORKING_HOURS_END", "18:00")
+
+@app.get("/api/availability")
+def get_availability(current_user: Dict[str, Any] = Depends(get_guarded_user)):
+    """ Get team availability grid """
+    # Only Lead (own team) and Admin (all) can view
+    # P0: Leads see own team. (Admins cross-team is P1). We will implement Lead scope here.
+    if current_user["role"] not in ["lead", "admin"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    team_id = current_user.get("team_id")
+    if current_user["role"] == "lead" and not team_id:
+        raise HTTPException(status_code=403, detail="Lead has no team assigned")
+
+    # Fetch users in scope
+    try:
+        if current_user["role"] == "admin":
+            users_res = supabase.table("profiles").select("id, full_name, role").eq("is_active", True).execute()
+        else:
+            users_res = supabase.table("profiles").select("id, full_name, role").eq("team_id", team_id).eq("is_active", True).execute()
+
+        users = users_res.data
+        user_ids = [u["id"] for u in users]
+
+        if not user_ids:
+            return {"users": [], "availability": {}}
+
+        # Fetch active timetables for these users
+        tt_res = supabase.table("timetables").select("id, user_id, updated_at").eq("status", "active").in_("user_id", user_ids).execute()
+        timetables = tt_res.data
+        tt_by_user = {t["user_id"]: t for t in timetables}
+        tt_ids = [t["id"] for t in timetables]
+
+        # Fetch slots (minimize data returned: no subject, no room)
+        slots_data = []
+        if tt_ids:
+            slots_res = supabase.table("timetable_slots").select("timetable_id, day_of_week, start_time, end_time").in_("timetable_id", tt_ids).execute()
+            slots_data = slots_res.data
+
+        # Group slots by user
+        slots_by_user = {u["id"]: [] for u in users}
+        for slot in slots_data:
+            # find user_id for this timetable_id
+            owner_id = next((uid for uid, t in tt_by_user.items() if t["id"] == slot["timetable_id"]), None)
+            if owner_id:
+                slots_by_user[owner_id].append({
+                    "day_of_week": slot["day_of_week"],
+                    "start_time": slot["start_time"],
+                    "end_time": slot["end_time"]
+                })
+
+        # Format response
+        result = []
+        for user in users:
+            uid = user["id"]
+            tt = tt_by_user.get(uid)
+            result.append({
+                "user_id": uid,
+                "full_name": user["full_name"],
+                "role": user["role"],
+                "timetable_status": "saved" if tt else "pending",
+                "last_updated": tt["updated_at"] if tt else None,
+                "busy_slots": slots_by_user[uid]
+            })
+
+        return {
+            "working_hours": {"start": WORKING_HOURS_START, "end": WORKING_HOURS_END},
+            "members": result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/availability/free")
+def get_free_members(day: str, start_time: str, end_time: str, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+    """ Get users free in a specific window """
+    if current_user["role"] not in ["lead", "admin"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    team_id = current_user.get("team_id")
+
+    try:
+        # Get members in scope
+        if current_user["role"] == "admin":
+            users_res = supabase.table("profiles").select("id, full_name").eq("is_active", True).execute()
+        else:
+            users_res = supabase.table("profiles").select("id, full_name").eq("team_id", team_id).eq("is_active", True).execute()
+
+        users = users_res.data
+        user_ids = [u["id"] for u in users]
+
+        if not user_ids:
+            return []
+
+        # Get active timetables
+        tt_res = supabase.table("timetables").select("id, user_id").eq("status", "active").in_("user_id", user_ids).execute()
+        timetables = tt_res.data
+        tt_by_user = {t["user_id"]: t["id"] for t in timetables}
+
+        # A pending timetable is NEVER counted as free (AV-05).
+        # We only consider users who HAVE an active timetable.
+        users_with_tt = [u for u in users if u["id"] in tt_by_user]
+        if not users_with_tt:
+            return []
+
+        # Fetch busy slots that overlap with the requested time
+        # Overlap logic: slot.start < requested.end AND slot.end > requested.start
+        tt_ids_with_tt = list(tt_by_user.values())
+        slots_res = supabase.table("timetable_slots").select("timetable_id").eq("day_of_week", day).in_("timetable_id", tt_ids_with_tt).execute()
+
+        # We have to filter overlaps in Python due to PostgREST limitations on complex time comparisons easily
+        # Alternatively, we could write an RPC, but fetching today's slots is small enough.
+        all_day_slots_res = supabase.table("timetable_slots").select("timetable_id, start_time, end_time").eq("day_of_week", day).in_("timetable_id", tt_ids_with_tt).execute()
+
+        busy_tt_ids = set()
+        for slot in all_day_slots_res.data:
+            # Overlap: starts before req ends, AND ends after req starts
+            if slot["start_time"] < end_time and slot["end_time"] > start_time:
+                busy_tt_ids.add(slot["timetable_id"])
+
+        # Find who is free
+        free_members = []
+        for user in users_with_tt:
+            tt_id = tt_by_user[user["id"]]
+            if tt_id not in busy_tt_ids:
+                free_members.append({
+                    "user_id": user["id"],
+                    "full_name": user["full_name"]
+                })
+
+        return free_members
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
