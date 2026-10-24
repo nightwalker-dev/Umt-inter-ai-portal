@@ -606,14 +606,23 @@ def create_event(req: CreateEventRequest, current_user: Dict[str, Any] = Depends
     """ Admin creates an event """
 
 
-    try:
-        data = req.model_dump(exclude_unset=True)
-        data["created_by"] = current_user["id"]
-        res = supabase.table("events").insert(data).execute()
 
-        log_activity(current_user["id"], "event_created", "event", res.data[0]["id"], data)
-        return res.data[0]
+    try:
+        res = supabase.rpc("create_task_with_history", {
+            "p_title": req.title,
+            "p_description": req.description,
+            "p_assigned_to": req.assigned_to,
+            "p_assigned_by": current_user["id"],
+            "p_team_id": assignee_team_id,
+            "p_event_id": req.event_id,
+            "p_priority": req.priority,
+            "p_due_date": req.due_date
+        }).execute()
+
+        task_id = res.data
+        return {"id": task_id, "status": "pending"}
     except Exception as e:
+
 
 
         raise HTTPException(status_code=400, detail=str(e))
@@ -738,14 +747,23 @@ def create_task(req: CreateTaskRequest, current_user: Dict[str, Any] = Depends(g
 
 
 
-    try:
-        data = req.model_dump(exclude_unset=True)
-        data["created_by"] = current_user["id"]
-        res = supabase.table("events").insert(data).execute()
 
-        log_activity(current_user["id"], "event_created", "event", res.data[0]["id"], data)
-        return res.data[0]
+    try:
+        res = supabase.rpc("create_task_with_history", {
+            "p_title": req.title,
+            "p_description": req.description,
+            "p_assigned_to": req.assigned_to,
+            "p_assigned_by": current_user["id"],
+            "p_team_id": assignee_team_id,
+            "p_event_id": req.event_id,
+            "p_priority": req.priority,
+            "p_due_date": req.due_date
+        }).execute()
+
+        task_id = res.data
+        return {"id": task_id, "status": "pending"}
     except Exception as e:
+
 
 
         raise HTTPException(status_code=400, detail=str(e))
