@@ -1,0 +1,24 @@
+# Step 5 - Database Analysis Log
+
+--- Checking Indexes ---
+No explicit CREATE INDEX found
+
+--- Checking Constraints ---
+ALTER TABLE teams ADD CONSTRAINT fk_teams_lead FOREIGN KEY (lead_id) REFERENCES profiles(id) ON DELETE SET NULL;
+    CONSTRAINT one_active_timetable_per_user UNIQUE (user_id)
+    CONSTRAINT start_before_end CHECK (start_time < end_time)
+    -- We can't do complex cross-table checks easily in a simple CHECK constraint,
+    CONSTRAINT review_note_required_if_rejected CHECK (
+-- Triggers for constraints
+-- Fix team_id constraint and add is_active checks to RLS
+-- Drop NOT NULL constraint on team_id for admins
+ALTER TABLE profiles ADD CONSTRAINT admin_no_team CHECK (role = 'admin' OR team_id IS NOT NULL);
+
+--- Checking Seed Script (for weak passwords/real data) ---
+INSERT INTO teams (name) VALUES ('Media'), ('Tech'), ('Operations') ON CONFLICT (name) DO NOTHING;
+INSERT INTO storage.buckets (id, name, public)
+    INSERT INTO tasks (title, description, assigned_to, assigned_by, team_id, event_id, status, priority, due_date)
+    INSERT INTO task_status_history (task_id, to_status, changed_by, note)
+    INSERT INTO activity_log (actor_id, action, entity_type, entity_id, details)
+    INSERT INTO task_status_history (task_id, from_status, to_status, changed_by, note)
+    INSERT INTO activity_log (actor_id, action, entity_type, entity_id)
