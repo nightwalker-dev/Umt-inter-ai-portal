@@ -265,3 +265,10 @@ BEGIN
   RETURN (SELECT team_id FROM profiles WHERE id = auth.uid() AND is_active = true);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Drop NOT NULL constraint on team_id for admins
+ALTER TABLE profiles ALTER COLUMN team_id DROP NOT NULL;
+ALTER TABLE profiles ADD CONSTRAINT admin_no_team CHECK (role = 'admin' OR team_id IS NOT NULL);
+
+-- Insert initial teams
+INSERT INTO teams (name) VALUES ('Media'), ('Tech'), ('Operations') ON CONFLICT (name) DO NOTHING;
