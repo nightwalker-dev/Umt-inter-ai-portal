@@ -1,0 +1,4 @@
+./backend/main.py:103:    # Explicitly using get_current_user to bypass the password change lock for this route
+./backend/main.py:286:def extract_slots_stub(image_bytes: bytes) -> list:
+./backend/main.py:339:        slots = extract_slots_stub(clean_bytes)
+./README_AUDIT.md:7:1. **Live Environment / Configs:** Do I have access to a real staging environment or test Supabase instance? (Currently, the app requires Supabase to run and test fully). If not, please provide credentials for synthetic test users or authorize me to spin up a local mock database container.

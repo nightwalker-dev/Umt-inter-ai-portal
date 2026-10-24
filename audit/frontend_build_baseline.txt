@@ -1,0 +1,67 @@
+
+> frontend@0.1.0 build
+> next build
+
+▲ Next.js 16.4.3 (Turbopack)
+✓ Running next.config.js took 28ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 1519ms
+  Running TypeScript ...
+  Finished TypeScript in 3.6s ...
+  Collecting page data using 3 workers ...
+  Generating static pages using 3 workers (0/15) ...
+  Generating static pages using 3 workers (3/15)
+  Generating static pages using 3 workers (7/15)
+  Generating static pages using 3 workers (11/15)
+✓ Generating static pages using 3 workers (15/15) in 809ms
+Turbopack build encountered 1 warning:
+./src/app/globals.css:8:7
+Warning: Parsing CSS source code failed
+  [90m 6 |[0m }
+  [90m 7 |[0m
+[33m[1m>[0m [90m 8 |[0m @theme inline {
+  [90m   |[0m       [33m[1m^[0m
+  [90m 9 |[0m   --color-background: [36mvar[0m(--background);
+  [90m10 |[0m   --color-foreground: [36mvar[0m(--foreground);
+  [90m11 |[0m   --font-sans: [36mvar[0m(--font-geist-sans);
+
+Unknown at rule: @theme
+
+Generated code of PostCSS transform of file content of src/app/globals.css:
+./src/app/globals.css:8:7
+  [90m 6 |[0m }
+  [90m 7 |[0m
+[33m[1m>[0m [90m 8 |[0m @theme inline {
+  [90m   |[0m       [33m[1m^[0m
+  [90m 9 |[0m   --color-background: [36mvar[0m(--background);
+  [90m10 |[0m   --color-foreground: [36mvar[0m(--foreground);
+  [90m11 |[0m   --font-sans: [36mvar[0m(--font-geist-sans);
+
+Import trace:
+  Client Component Browser:
+    ./src/app/globals.css [Client Component Browser]
+    ./src/app/layout.tsx [Server Component]
+
+
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /admin
+├ ○ /admin/activity
+├ ○ /admin/availability
+├ ○ /admin/events
+├ ○ /admin/first-login
+├ ○ /admin/login
+├ ○ /admin/review
+├ ○ /admin/tasks
+├ ○ /admin/teams
+├ ○ /admin/timetable
+└ ○ /admin/users
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)  prerendered as static content

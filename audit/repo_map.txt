@@ -1,0 +1,62 @@
+.
+├── 001_initial_schema.sql
+├── ARCHITECTURE.md
+├── README.md
+├── README_AUDIT.md
+├── audit
+│   └── repo_map.txt
+├── backend
+│   ├── main.py
+│   ├── requirements.txt
+│   └── tests
+│       ├── test_auth.py
+│       ├── test_availability.py
+│       ├── test_tasks.py
+│       └── test_timetable.py
+└── frontend
+    ├── AGENTS.md
+    ├── README.md
+    ├── eslint.config.mjs
+    ├── middleware.ts
+    ├── next-env.d.ts
+    ├── next.config.js
+    ├── package-lock.json
+    ├── package.json
+    ├── public
+    │   ├── file.svg
+    │   ├── globe.svg
+    │   ├── next.svg
+    │   ├── vercel.svg
+    │   └── window.svg
+    ├── src
+    │   └── app
+    │       ├── admin
+    │       │   ├── activity
+    │       │   │   └── page.tsx
+    │       │   ├── availability
+    │       │   │   └── page.tsx
+    │       │   ├── events
+    │       │   │   └── page.tsx
+    │       │   ├── first-login
+    │       │   │   └── page.tsx
+    │       │   ├── layout.tsx
+    │       │   ├── login
+    │       │   │   └── page.tsx
+    │       │   ├── page.tsx
+    │       │   ├── review
+    │       │   │   └── page.tsx
+    │       │   ├── tasks
+    │       │   │   └── page.tsx
+    │       │   ├── teams
+    │       │   │   └── page.tsx
+    │       │   ├── timetable
+    │       │   │   └── page.tsx
+    │       │   └── users
+    │       │       └── page.tsx
+    │       ├── favicon.ico
+    │       ├── globals.css
+    │       ├── layout.tsx
+    │       └── page.tsx
+    └── tsconfig.json
+
+19 directories, 41 files
