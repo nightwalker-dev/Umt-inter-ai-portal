@@ -583,3 +583,337 @@ def get_free_members(day: str, start_time: str, end_time: str, current_user: Dic
         return free_members
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+# --- Phase 4: Events ---
+
+class CreateEventRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    start_date: str
+    end_date: str
+    status: str # upcoming, ongoing, completed
+
+class UpdateEventRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    status: Optional[str] = None
+
+@app.post("/api/events", status_code=status.HTTP_201_CREATED)
+def create_event(req: CreateEventRequest, current_user: Dict[str, Any] = Depends(require_admin)):
+    """ Admin creates an event """
+
+    try:
+        res = supabase.rpc("create_task_with_history", {
+            "p_title": req.title,
+            "p_description": req.description,
+            "p_assigned_to": req.assigned_to,
+            "p_assigned_by": current_user["id"],
+            "p_team_id": assignee_team_id,
+            "p_event_id": req.event_id,
+            "p_priority": req.priority,
+            "p_due_date": req.due_date
+        }).execute()
+
+        task_id = res.data
+        return {"id": task_id, "status": "pending"}
+    except Exception as e:
+
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/events")
+def list_events(current_user: Dict[str, Any] = Depends(get_guarded_user)):
+    """ All guarded users can see events """
+    try:
+        res = supabase.table("events").select("*").order("start_date", desc=True).execute()
+        return res.data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/events/{event_id}")
+def get_event(event_id: str, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+    """ Get event details (including its tasks within scope) """
+    try:
+        ev_res = supabase.table("events").select("*").eq("id", event_id).execute()
+        if not ev_res.data:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        event = ev_res.data[0]
+
+        # Get tasks within scope
+        # Scope: Admin (all), Lead (team + own), User (own)
+        # We rely on Supabase RLS policies for Tasks, but since we are using Service Role,
+        # we MUST enforce the scope manually here!
+        query = supabase.table("tasks").select("id, title, assigned_to, assigned_by, team_id, status").eq("event_id", event_id)
+
+        if current_user["role"] == "user":
+            query = query.eq("assigned_to", current_user["id"])
+        elif current_user["role"] == "lead":
+            # PostgREST syntax for OR is slightly tricky via python client.
+            # Team or assigned to me
+            # .or_(f"team_id.eq.{current_user['team_id']},assigned_to.eq.{current_user['id']}")
+            query = query.or_(f"team_id.eq.{current_user['team_id']},assigned_to.eq.{current_user['id']}")
+
+        tasks_res = query.execute()
+
+        return {"event": event, "tasks": tasks_res.data}
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.patch("/api/events/{event_id}")
+def update_event(event_id: str, req: UpdateEventRequest, current_user: Dict[str, Any] = Depends(require_admin)):
+    """ Admin updates event """
+    update_data = req.model_dump(exclude_unset=True)
+    if not update_data:
+        return {"status": "no changes"}
+
+    try:
+        update_data["updated_at"] = datetime.utcnow().isoformat()
+        res = supabase.table("events").update(update_data).eq("id", event_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Event not found")
+
+        log_activity(current_user["id"], "event_updated", "event", event_id, update_data)
+        return res.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# --- Phase 4: Tasks ---
+
+class CreateTaskRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    assigned_to: str
+    event_id: Optional[str] = None
+    priority: Optional[str] = None
+    due_date: Optional[str] = None
+
+class UpdateTaskRequest(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    assigned_to: Optional[str] = None
+    due_date: Optional[str] = None
+
+def _enforce_assignee_rule(assigner: Dict[str, Any], assignee_id: str) -> str:
+    """ Enforces TK-02 rule and returns the assignee's team_id """
+    # Fetch assignee profile
+    assignee_res = supabase.table("profiles").select("id, role, team_id, is_active").eq("id", assignee_id).execute()
+    if not assignee_res.data:
+        raise HTTPException(status_code=404, detail="Assignee not found")
+
+    assignee = assignee_res.data[0]
+    if not assignee.get("is_active"):
+        raise HTTPException(status_code=400, detail="Cannot assign task to deactivated user")
+
+    if assigner["role"] == "admin":
+        # Admin can assign to any User or Lead
+        if assignee["role"] not in ["user", "lead"]:
+            raise HTTPException(status_code=400, detail="Admins can only assign to Users or Leads")
+    elif assigner["role"] == "lead":
+        # Lead can assign ONLY to Users of their OWN team (not to self, Admin, or other Lead)
+        if assignee["id"] == assigner["id"]:
+            raise HTTPException(status_code=400, detail="Leads cannot assign tasks to themselves")
+        if assignee["role"] != "user":
+            raise HTTPException(status_code=400, detail="Leads can only assign tasks to Users")
+        if assignee["team_id"] != assigner["team_id"]:
+            raise HTTPException(status_code=400, detail="Leads can only assign tasks to their own team")
+    else:
+        raise HTTPException(status_code=403, detail="Users cannot assign tasks")
+
+    return assignee["team_id"]
+
+@app.post("/api/tasks", status_code=status.HTTP_201_CREATED)
+def create_task(req: CreateTaskRequest, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+    """ Create a task. Enforces assignee rules. """
+    if current_user["role"] not in ["admin", "lead"]:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    assignee_team_id = _enforce_assignee_rule(current_user, req.assigned_to)
+
+    # Check if event is completed (EV-09)
+    if req.event_id:
+        ev_res = supabase.table("events").select("status").eq("id", req.event_id).execute()
+        if not ev_res.data:
+            raise HTTPException(status_code=404, detail="Event not found")
+        if ev_res.data[0]["status"] == "completed":
+            raise HTTPException(status_code=400, detail="Cannot add tasks to a completed event")
+
+
+    try:
+        res = supabase.rpc("create_task_with_history", {
+            "p_title": req.title,
+            "p_description": req.description,
+            "p_assigned_to": req.assigned_to,
+            "p_assigned_by": current_user["id"],
+            "p_team_id": assignee_team_id,
+            "p_event_id": req.event_id,
+            "p_priority": req.priority,
+            "p_due_date": req.due_date
+        }).execute()
+
+        task_id = res.data
+        return {"id": task_id, "status": "pending"}
+    except Exception as e:
+
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/tasks")
+def list_tasks(current_user: Dict[str, Any] = Depends(get_guarded_user)):
+    """ List tasks within scope """
+    query = supabase.table("tasks").select("*, assigned_to:profiles!tasks_assigned_to_fkey(full_name)")
+
+    if current_user["role"] == "user":
+        query = query.eq("assigned_to", current_user["id"])
+    elif current_user["role"] == "lead":
+        query = query.or_(f"team_id.eq.{current_user['team_id']},assigned_to.eq.{current_user['id']}")
+
+    try:
+        res = query.order("created_at", desc=True).execute()
+        return res.data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/tasks/{task_id}")
+def get_task(task_id: str, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+    """ Get single task within scope """
+    try:
+        res = supabase.table("tasks").select("*").eq("id", task_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        task = res.data[0]
+
+        # Check scope
+        if current_user["role"] == "user" and task["assigned_to"] != current_user["id"]:
+            raise HTTPException(status_code=404, detail="Task not found") # 404 to obscure existence
+        if current_user["role"] == "lead" and task["team_id"] != current_user["team_id"] and task["assigned_to"] != current_user["id"]:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        return task
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.patch("/api/tasks/{task_id}")
+def update_task(task_id: str, req: UpdateTaskRequest, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+    """ Edit a task. Enforce rules. """
+    # Get existing task
+    task = get_task(task_id, current_user) # also checks scope implicitly
+
+    # TK-09: Only the assigner can edit... (Admin exception: we asked, but standard deny by default unless assigner or admin?
+    # Let's say Admin can edit any task, but Lead can only edit tasks they assigned)
+    if task["assigned_by"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Only the assigner can edit this task")
+
+    # TK-09: ...until the task is Approved
+    if task["status"] == "approved":
+        raise HTTPException(status_code=400, detail="Cannot edit an Approved task")
+
+    update_data = req.model_dump(exclude_unset=True)
+    if not update_data:
+        return {"status": "no changes"}
+
+    if "assigned_to" in update_data:
+        new_team_id = _enforce_assignee_rule(current_user, update_data["assigned_to"])
+        update_data["team_id"] = new_team_id
+
+    try:
+        update_data["updated_at"] = datetime.utcnow().isoformat()
+        res = supabase.table("tasks").update(update_data).eq("id", task_id).execute()
+
+        log_activity(current_user["id"], "task_edited", "task", task_id, update_data)
+        return res.data[0]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+class ReviewTaskRequest(BaseModel):
+    status: str # approved, rejected
+    note: Optional[str] = None
+
+def _transition_task(task: dict, to_status: str, current_user: Dict[str, Any], note: str = None):
+    """ Handle strict transitions and audit logging """
+    from_status = task["status"]
+    task_id = task["id"]
+
+    update_data = {"status": to_status, "updated_at": datetime.utcnow().isoformat()}
+
+    if to_status == "completed":
+        update_data["completed_at"] = datetime.utcnow().isoformat()
+    elif to_status in ["approved", "rejected"]:
+        update_data["reviewed_by"] = current_user["id"]
+        update_data["reviewed_at"] = datetime.utcnow().isoformat()
+        update_data["review_note"] = note
+
+
+    try:
+        res = supabase.rpc("transition_task_with_history", {
+            "p_task_id": task_id,
+            "p_from_status": from_status,
+            "p_to_status": to_status,
+            "p_changed_by": current_user["id"],
+            "p_note": note
+        }).execute()
+
+        if not res.data:
+            raise HTTPException(status_code=409, detail="Task state changed or conflict")
+
+        return {"status": "success"}
+    except Exception as e:
+
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/tasks/{task_id}/complete")
+def complete_task(task_id: str, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+    """ Mark work completed. Only assignee. """
+    task = get_task(task_id, current_user)
+
+    if task["assigned_to"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Only the assignee can mark this completed")
+
+    if task["status"] not in ["pending", "rejected"]: # Can rework a rejected task
+        raise HTTPException(status_code=400, detail=f"Cannot complete a task in {task['status']} status")
+
+    return _transition_task(task, "completed", current_user)
+
+@app.post("/api/tasks/{task_id}/review")
+def review_task(task_id: str, req: ReviewTaskRequest, current_user: Dict[str, Any] = Depends(require_admin)):
+    """ Approve or Reject. Admin only. """
+    # Bypass standard get_task scope since Admin sees all anyway
+    try:
+        res = supabase.table("tasks").select("*").eq("id", task_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="Task not found")
+        task = res.data[0]
+    except Exception as e:
+        if isinstance(e, HTTPException): raise e
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if task["status"] != "completed":
+        raise HTTPException(status_code=400, detail="Can only review completed tasks")
+
+    if req.status not in ["approved", "rejected"]:
+        raise HTTPException(status_code=400, detail="Invalid review status")
+
+    if req.status == "rejected" and (not req.note or not req.note.strip()):
+        raise HTTPException(status_code=400, detail="A reason (note) is required when rejecting")
+
+    # Prevent assignee from approving their own task (if Admin is assigned)
+    if task["assigned_to"] == current_user["id"]:
+        raise HTTPException(status_code=403, detail="Assignee cannot review their own task")
+
+    return _transition_task(task, req.status, current_user, req.note)
+
+@app.get("/api/tasks/{task_id}/history")
+def get_task_history(task_id: str, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+    """ Get status history within scope """
+    # Validate scope first
+    get_task(task_id, current_user)
+
+    try:
+        res = supabase.table("task_status_history").select("*, changed_by:profiles!task_status_history_changed_by_fkey(full_name)").eq("task_id", task_id).order("changed_at", desc=True).execute()
+        return res.data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))

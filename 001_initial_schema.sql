@@ -280,3 +280,65 @@ ON CONFLICT (id) DO NOTHING;
 -- Revoke all access from anon for the bucket
 -- Since public is false, it's already private, but we can add an RLS policy just in case.
 -- We won't add any policies since only the Service Role (FastAPI) will access this bucket.
+-- RPC for creating a task with atomic history logging
+CREATE OR REPLACE FUNCTION create_task_with_history(
+    p_title TEXT,
+    p_description TEXT,
+    p_assigned_to UUID,
+    p_assigned_by UUID,
+    p_team_id UUID,
+    p_event_id UUID,
+    p_priority TEXT,
+    p_due_date TIMESTAMPTZ
+) RETURNS UUID AS $$
+DECLARE
+    v_task_id UUID;
+BEGIN
+    INSERT INTO tasks (title, description, assigned_to, assigned_by, team_id, event_id, status, priority, due_date)
+    VALUES (p_title, p_description, p_assigned_to, p_assigned_by, p_team_id, p_event_id, 'pending', p_priority, p_due_date)
+    RETURNING id INTO v_task_id;
+
+    INSERT INTO task_status_history (task_id, to_status, changed_by, note)
+    VALUES (v_task_id, 'pending', p_assigned_by, 'Task created');
+
+    INSERT INTO activity_log (actor_id, action, entity_type, entity_id, details)
+    VALUES (p_assigned_by, 'task_created', 'task', v_task_id, jsonb_build_object('title', p_title, 'assigned_to', p_assigned_to));
+
+    RETURN v_task_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- RPC for transitioning a task with atomic history logging
+CREATE OR REPLACE FUNCTION transition_task_with_history(
+    p_task_id UUID,
+    p_from_status task_status,
+    p_to_status task_status,
+    p_changed_by UUID,
+    p_note TEXT
+) RETURNS BOOLEAN AS $$
+DECLARE
+    v_updated BOOLEAN;
+BEGIN
+    -- Update the task, ensuring from_status matches
+    UPDATE tasks
+    SET status = p_to_status,
+        updated_at = NOW(),
+        completed_at = CASE WHEN p_to_status = 'completed' THEN NOW() ELSE completed_at END,
+        reviewed_by = CASE WHEN p_to_status IN ('approved', 'rejected') THEN p_changed_by ELSE reviewed_by END,
+        reviewed_at = CASE WHEN p_to_status IN ('approved', 'rejected') THEN NOW() ELSE reviewed_at END,
+        review_note = CASE WHEN p_to_status IN ('approved', 'rejected') THEN p_note ELSE review_note END
+    WHERE id = p_task_id AND status = p_from_status;
+
+    IF NOT FOUND THEN
+        RETURN FALSE;
+    END IF;
+
+    INSERT INTO task_status_history (task_id, from_status, to_status, changed_by, note)
+    VALUES (p_task_id, p_from_status, p_to_status, p_changed_by, p_note);
+
+    INSERT INTO activity_log (actor_id, action, entity_type, entity_id)
+    VALUES (p_changed_by, 'task_marked_' || p_to_status::text, 'task', p_task_id);
+
+    RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
