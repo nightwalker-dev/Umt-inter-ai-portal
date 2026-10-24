@@ -1,0 +1,46 @@
+# Step 3 - AI Traps Search Log
+
+--- Checking for missing awaits ---
+40:        supabase.table("activity_log").insert({
+137:        supabase.table("profiles").insert({
+411:            supabase.table("timetables").update({
+424:            new_tt = supabase.table("timetables").insert({
+644:        query = supabase.table("tasks").select("id, title, assigned_to, assigned_by, team_id, status").eq("event_id", event_id)
+756:    query = supabase.table("tasks").select("*, assigned_to:profiles!tasks_assigned_to_fkey(full_name)")
+
+--- Checking for RLS USING (true) ---
+203:USING (true);
+
+--- Checking for except: pass ---
+166-            pass
+352-            pass # Best effort cleanup
+
+--- Checking for client-side only auth ---
+
+--- Checking for leaked service keys in frontend ---
+
+--- Checking for unhandled promises in auth ---
+102:def get_me(current_user: Dict[str, Any] = Depends(get_current_user)):
+120:def create_user(req: CreateUserRequest, current_user: Dict[str, Any] = Depends(require_admin)):
+170:def update_user(user_id: str, req: UpdateUserRequest, current_user: Dict[str, Any] = Depends(require_admin)):
+203:def reset_password(user_id: str, current_user: Dict[str, Any] = Depends(require_admin)):
+230:def set_first_password(req: FirstPasswordRequest, current_user: Dict[str, Any] = Depends(get_current_user)):
+255:def list_teams(current_user: Dict[str, Any] = Depends(get_guarded_user)):
+264:def list_users(current_user: Dict[str, Any] = Depends(get_guarded_user)):
+369:def get_my_timetable(current_user: Dict[str, Any] = Depends(get_guarded_user)):
+386:def save_my_timetable(req: SaveTimetableRequest, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+458:def get_availability(current_user: Dict[str, Any] = Depends(get_guarded_user)):
+528:def get_free_members(day: str, start_time: str, end_time: str, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+605:def create_event(req: CreateEventRequest, current_user: Dict[str, Any] = Depends(require_admin)):
+622:def list_events(current_user: Dict[str, Any] = Depends(get_guarded_user)):
+631:def get_event(event_id: str, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+662:def update_event(event_id: str, req: UpdateEventRequest, current_user: Dict[str, Any] = Depends(require_admin)):
+724:def create_task(req: CreateTaskRequest, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+754:def list_tasks(current_user: Dict[str, Any] = Depends(get_guarded_user)):
+770:def get_task(task_id: str, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+791:def update_task(task_id: str, req: UpdateTaskRequest, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+860:def complete_task(task_id: str, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+873:def review_task(task_id: str, req: ReviewTaskRequest, current_user: Dict[str, Any] = Depends(require_admin)):
+901:def get_task_history(task_id: str, current_user: Dict[str, Any] = Depends(get_guarded_user)):
+915:def list_activity(current_user: Dict[str, Any] = Depends(require_admin)):
+924:def get_dashboard_summary(current_user: Dict[str, Any] = Depends(get_guarded_user)):
