@@ -272,3 +272,11 @@ ALTER TABLE profiles ADD CONSTRAINT admin_no_team CHECK (role = 'admin' OR team_
 
 -- Insert initial teams
 INSERT INTO teams (name) VALUES ('Media'), ('Tech'), ('Operations') ON CONFLICT (name) DO NOTHING;
+-- Create the private timetables storage bucket if it doesn't exist
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('timetables', 'timetables', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- Revoke all access from anon for the bucket
+-- Since public is false, it's already private, but we can add an RLS policy just in case.
+-- We won't add any policies since only the Service Role (FastAPI) will access this bucket.
