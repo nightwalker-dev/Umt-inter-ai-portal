@@ -4,7 +4,8 @@ from pydantic import BaseModel
 import os
 import secrets
 from typing import Optional, Dict, Any
-from jose import jwt, JWTError
+import jwt
+from jwt.exceptions import InvalidTokenError as JWTError
 from supabase import create_client, Client
 from datetime import datetime
 
@@ -604,21 +605,16 @@ class UpdateEventRequest(BaseModel):
 def create_event(req: CreateEventRequest, current_user: Dict[str, Any] = Depends(require_admin)):
     """ Admin creates an event """
 
-    try:
-        res = supabase.rpc("create_task_with_history", {
-            "p_title": req.title,
-            "p_description": req.description,
-            "p_assigned_to": req.assigned_to,
-            "p_assigned_by": current_user["id"],
-            "p_team_id": assignee_team_id,
-            "p_event_id": req.event_id,
-            "p_priority": req.priority,
-            "p_due_date": req.due_date
-        }).execute()
 
-        task_id = res.data
-        return {"id": task_id, "status": "pending"}
+    try:
+        data = req.model_dump(exclude_unset=True)
+        data["created_by"] = current_user["id"]
+        res = supabase.table("events").insert(data).execute()
+
+        log_activity(current_user["id"], "event_created", "event", res.data[0]["id"], data)
+        return res.data[0]
     except Exception as e:
+
 
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -741,21 +737,16 @@ def create_task(req: CreateTaskRequest, current_user: Dict[str, Any] = Depends(g
             raise HTTPException(status_code=400, detail="Cannot add tasks to a completed event")
 
 
-    try:
-        res = supabase.rpc("create_task_with_history", {
-            "p_title": req.title,
-            "p_description": req.description,
-            "p_assigned_to": req.assigned_to,
-            "p_assigned_by": current_user["id"],
-            "p_team_id": assignee_team_id,
-            "p_event_id": req.event_id,
-            "p_priority": req.priority,
-            "p_due_date": req.due_date
-        }).execute()
 
-        task_id = res.data
-        return {"id": task_id, "status": "pending"}
+    try:
+        data = req.model_dump(exclude_unset=True)
+        data["created_by"] = current_user["id"]
+        res = supabase.table("events").insert(data).execute()
+
+        log_activity(current_user["id"], "event_created", "event", res.data[0]["id"], data)
+        return res.data[0]
     except Exception as e:
+
 
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -915,5 +906,48 @@ def get_task_history(task_id: str, current_user: Dict[str, Any] = Depends(get_gu
     try:
         res = supabase.table("task_status_history").select("*, changed_by:profiles!task_status_history_changed_by_fkey(full_name)").eq("task_id", task_id).order("changed_at", desc=True).execute()
         return res.data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# --- Phase 5: Activity Log ---
+
+@app.get("/api/activity")
+def list_activity(current_user: Dict[str, Any] = Depends(require_admin)):
+    """ Admin only: list all activity logs """
+    try:
+        res = supabase.table("activity_log").select("*, actor_id:profiles!activity_log_actor_id_fkey(full_name, role)").order("created_at", desc=True).execute()
+        return res.data
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/dashboard")
+def get_dashboard_summary(current_user: Dict[str, Any] = Depends(get_guarded_user)):
+    """ Get summary metrics based on role """
+    role = current_user["role"]
+    team_id = current_user.get("team_id")
+    user_id = current_user["id"]
+
+    summary = {}
+    try:
+        if role == "admin":
+            # Admin: Pending Reviews (tasks in 'completed' status)
+            tasks_res = supabase.table("tasks").select("id").eq("status", "completed").execute()
+            summary["pending_reviews"] = len(tasks_res.data)
+        elif role == "lead":
+            # Lead: Team tasks
+            tasks_res = supabase.table("tasks").select("id, status").eq("team_id", team_id).execute()
+            summary["team_tasks_total"] = len(tasks_res.data)
+            summary["team_tasks_pending"] = len([t for t in tasks_res.data if t["status"] == "pending"])
+
+        # User (and Lead): Own tasks and Timetable status
+        if role in ["lead", "user"]:
+            own_tasks_res = supabase.table("tasks").select("id, status").eq("assigned_to", user_id).execute()
+            summary["own_tasks_total"] = len(own_tasks_res.data)
+            summary["own_tasks_pending"] = len([t for t in own_tasks_res.data if t["status"] == "pending"])
+
+            tt_res = supabase.table("timetables").select("id").eq("user_id", user_id).eq("status", "active").execute()
+            summary["timetable_saved"] = len(tt_res.data) > 0
+
+        return summary
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -57,11 +57,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {pathname !== '/admin/login' && pathname !== '/admin/first-login' && (
         <div className="w-64 bg-gray-100 p-4 border-r">
           <h2 className="font-bold text-xl mb-6">Club Portal</h2>
-          <nav className="space-y-2">
+                    <nav className="space-y-2">
             <a href="/admin" className="block p-2 hover:bg-gray-200 rounded">Dashboard</a>
             <a href="/admin/users" className="block p-2 hover:bg-gray-200 rounded">Users</a>
             <a href="/admin/teams" className="block p-2 hover:bg-gray-200 rounded">Teams</a>
             <a href="/admin/timetable" className="block p-2 hover:bg-gray-200 rounded">My Timetable</a>
+            <a href="/admin/availability" className="block p-2 hover:bg-gray-200 rounded">Availability</a>
+            <a href="/admin/tasks" className="block p-2 hover:bg-gray-200 rounded">Tasks</a>
+            <a href="/admin/events" className="block p-2 hover:bg-gray-200 rounded">Events</a>
+            <a href="/admin/review" className="block p-2 hover:bg-gray-200 rounded text-blue-600 font-bold">Review Queue</a>
+            <a href="/admin/activity" className="block p-2 hover:bg-gray-200 rounded text-red-600 font-bold">Activity Log</a>
           </nav>
         </div>
       )}
