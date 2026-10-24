@@ -67,6 +67,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <a href="/admin/events" className="block p-2 hover:bg-gray-200 rounded">Events</a>
             <a href="/admin/review" className="block p-2 hover:bg-gray-200 rounded text-blue-600 font-bold">Review Queue</a>
             <a href="/admin/activity" className="block p-2 hover:bg-gray-200 rounded text-red-600 font-bold">Activity Log</a>
+            <a href="/admin/profile" className="block p-2 hover:bg-gray-200 rounded text-green-600 font-bold">My Profile</a>
           </nav>
         </div>
       )}

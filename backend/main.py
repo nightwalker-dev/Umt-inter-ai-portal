@@ -348,8 +348,8 @@ async def extract_timetable(file: UploadFile = File(...), current_user: Dict[str
         # PRD C7.10: Delete the original image after extraction in a finally-style step
         try:
             supabase.storage.from_("timetables").remove([file_path])
-        except:
-            pass # Best effort cleanup
+        except Exception as cleanup_err:
+            print(f"Failed to clean up image from storage: {cleanup_err}") # Best effort cleanup logged
 
 class TimetableSlotModel(BaseModel):
     day_of_week: str
