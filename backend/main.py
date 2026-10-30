@@ -2,6 +2,10 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 import secrets
 from typing import Optional, Dict, Any
 import jwt
@@ -164,7 +168,10 @@ def create_user(req: CreateUserRequest, current_user: Dict[str, Any] = Depends(r
                 supabase.auth.admin.delete_user(new_user_id)
         except:
             pass
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 @app.patch("/api/users/{user_id}")
 def update_user(user_id: str, req: UpdateUserRequest, current_user: Dict[str, Any] = Depends(require_admin)):
@@ -193,7 +200,10 @@ def update_user(user_id: str, req: UpdateUserRequest, current_user: Dict[str, An
 
         return res.data[0]
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 
 class FirstPasswordRequest(BaseModel):
@@ -223,7 +233,10 @@ def reset_password(user_id: str, current_user: Dict[str, Any] = Depends(require_
 
         return {"id": user_id, "temp_password": temp_password}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 
 @app.post("/api/auth/first-password")
@@ -249,7 +262,10 @@ def set_first_password(req: FirstPasswordRequest, current_user: Dict[str, Any] =
 
         return {"status": "success", "profile": res.data[0]}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 @app.get("/api/teams")
 def list_teams(current_user: Dict[str, Any] = Depends(get_guarded_user)):
@@ -258,7 +274,10 @@ def list_teams(current_user: Dict[str, Any] = Depends(get_guarded_user)):
         res = supabase.table("teams").select("*").execute()
         return res.data
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 @app.get("/api/users")
 def list_users(current_user: Dict[str, Any] = Depends(get_guarded_user)):
@@ -274,7 +293,10 @@ def list_users(current_user: Dict[str, Any] = Depends(get_guarded_user)):
             raise HTTPException(status_code=403, detail="Forbidden")
         return res.data
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 # --- Phase 2: Timetable ---
 from fastapi import UploadFile, File
@@ -380,7 +402,10 @@ def get_my_timetable(current_user: Dict[str, Any] = Depends(get_guarded_user)):
         slots_res = supabase.table("timetable_slots").select("*").eq("timetable_id", tt["id"]).execute()
         return {"timetable": tt, "slots": slots_res.data}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 @app.put("/api/timetable/me")
 def save_my_timetable(req: SaveTimetableRequest, current_user: Dict[str, Any] = Depends(get_guarded_user)):
@@ -447,7 +472,10 @@ def save_my_timetable(req: SaveTimetableRequest, current_user: Dict[str, Any] = 
 
         return {"status": "success", "message": "Timetable saved"}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 # --- Phase 3: Availability ---
 
@@ -522,7 +550,10 @@ def get_availability(current_user: Dict[str, Any] = Depends(get_guarded_user)):
             "members": result
         }
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 @app.get("/api/availability/free")
 def get_free_members(day: str, start_time: str, end_time: str, current_user: Dict[str, Any] = Depends(get_guarded_user)):
@@ -583,7 +614,10 @@ def get_free_members(day: str, start_time: str, end_time: str, current_user: Dic
 
         return free_members
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 # --- Phase 4: Events ---
 
@@ -620,7 +654,10 @@ def create_event(req: CreateEventRequest, current_user: Dict[str, Any] = Depends
 
 
 
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 @app.get("/api/events")
 def list_events(current_user: Dict[str, Any] = Depends(get_guarded_user)):
@@ -629,7 +666,10 @@ def list_events(current_user: Dict[str, Any] = Depends(get_guarded_user)):
         res = supabase.table("events").select("*").order("start_date", desc=True).execute()
         return res.data
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 @app.get("/api/events/{event_id}")
 def get_event(event_id: str, current_user: Dict[str, Any] = Depends(get_guarded_user)):
@@ -660,7 +700,8 @@ def get_event(event_id: str, current_user: Dict[str, Any] = Depends(get_guarded_
         return {"event": event, "tasks": tasks_res.data}
     except Exception as e:
         if isinstance(e, HTTPException): raise e
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 @app.patch("/api/events/{event_id}")
 def update_event(event_id: str, req: UpdateEventRequest, current_user: Dict[str, Any] = Depends(require_admin)):
@@ -678,7 +719,10 @@ def update_event(event_id: str, req: UpdateEventRequest, current_user: Dict[str,
         log_activity(current_user["id"], "event_updated", "event", event_id, update_data)
         return res.data[0]
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 # --- Phase 4: Tasks ---
 
@@ -756,7 +800,10 @@ def create_task(req: CreateTaskRequest, current_user: Dict[str, Any] = Depends(g
 
 
 
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 @app.get("/api/tasks")
 def list_tasks(current_user: Dict[str, Any] = Depends(get_guarded_user)):
@@ -772,7 +819,10 @@ def list_tasks(current_user: Dict[str, Any] = Depends(get_guarded_user)):
         res = query.order("created_at", desc=True).execute()
         return res.data
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 @app.get("/api/tasks/{task_id}")
 def get_task(task_id: str, current_user: Dict[str, Any] = Depends(get_guarded_user)):
@@ -793,7 +843,8 @@ def get_task(task_id: str, current_user: Dict[str, Any] = Depends(get_guarded_us
         return task
     except Exception as e:
         if isinstance(e, HTTPException): raise e
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 @app.patch("/api/tasks/{task_id}")
 def update_task(task_id: str, req: UpdateTaskRequest, current_user: Dict[str, Any] = Depends(get_guarded_user)):
@@ -825,7 +876,10 @@ def update_task(task_id: str, req: UpdateTaskRequest, current_user: Dict[str, An
         log_activity(current_user["id"], "task_edited", "task", task_id, update_data)
         return res.data[0]
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 class ReviewTaskRequest(BaseModel):
     status: str # approved, rejected
@@ -862,7 +916,8 @@ def _transition_task(task: dict, to_status: str, current_user: Dict[str, Any], n
     except Exception as e:
 
         if isinstance(e, HTTPException): raise e
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 @app.post("/api/tasks/{task_id}/complete")
 def complete_task(task_id: str, current_user: Dict[str, Any] = Depends(get_guarded_user)):
@@ -888,7 +943,8 @@ def review_task(task_id: str, req: ReviewTaskRequest, current_user: Dict[str, An
         task = res.data[0]
     except Exception as e:
         if isinstance(e, HTTPException): raise e
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
     if task["status"] != "completed":
         raise HTTPException(status_code=400, detail="Can only review completed tasks")
@@ -915,7 +971,10 @@ def get_task_history(task_id: str, current_user: Dict[str, Any] = Depends(get_gu
         res = supabase.table("task_status_history").select("*, changed_by:profiles!task_status_history_changed_by_fkey(full_name)").eq("task_id", task_id).order("changed_at", desc=True).execute()
         return res.data
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 # --- Phase 5: Activity Log ---
 
@@ -926,7 +985,10 @@ def list_activity(current_user: Dict[str, Any] = Depends(require_admin)):
         res = supabase.table("activity_log").select("*, actor_id:profiles!activity_log_actor_id_fkey(full_name, role)").order("created_at", desc=True).execute()
         return res.data
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
 
 @app.get("/api/dashboard")
 def get_dashboard_summary(current_user: Dict[str, Any] = Depends(get_guarded_user)):
@@ -958,4 +1020,7 @@ def get_dashboard_summary(current_user: Dict[str, Any] = Depends(get_guarded_use
 
         return summary
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        if isinstance(e, HTTPException):
+            raise e
+        logger.error(f"Unexpected error: {e}", exc_info=True)
+        raise HTTPException(status_code=400, detail="An error occurred processing your request.")
