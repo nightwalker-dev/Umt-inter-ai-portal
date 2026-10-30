@@ -85,3 +85,17 @@ def test_admin_only_routes():
 def test_health_public_access():
     response = client.get("/api/health")
     assert response.status_code == 200
+
+@patch("main.supabase.table")
+def test_update_user_error_path(mock_table):
+    from main import get_current_user
+    app.dependency_overrides[get_current_user] = override_get_current_user(role="admin")
+
+    mock_table.return_value.update.return_value.eq.return_value.execute.side_effect = Exception("Mock DB Error")
+
+    response = client.patch("/api/users/test_user_id", json={"role": "user"})
+
+    assert response.status_code == 500
+    assert "Mock DB Error" in response.json()["detail"]
+
+    app.dependency_overrides.clear()

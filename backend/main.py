@@ -193,7 +193,7 @@ def update_user(user_id: str, req: UpdateUserRequest, current_user: Dict[str, An
 
         return res.data[0]
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 class FirstPasswordRequest(BaseModel):
