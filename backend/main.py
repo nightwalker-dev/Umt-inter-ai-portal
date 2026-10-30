@@ -747,16 +747,16 @@ def create_task(req: CreateTaskRequest, current_user: Dict[str, Any] = Depends(g
     try:
         data = req.model_dump(exclude_unset=True)
         data["created_by"] = current_user["id"]
-        res = supabase.table("events").insert(data).execute()
+        res = supabase.table("tasks").insert(data).execute()
 
-        log_activity(current_user["id"], "event_created", "event", res.data[0]["id"], data)
+        log_activity(current_user["id"], "create", "task", res.data[0]["id"])
         return res.data[0]
     except Exception as e:
 
 
 
 
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/tasks")
 def list_tasks(current_user: Dict[str, Any] = Depends(get_guarded_user)):

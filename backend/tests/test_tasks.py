@@ -102,3 +102,38 @@ def test_complete_wrong_assignee(mock_table):
     assert res.status_code == 404
 
     app.dependency_overrides.clear()
+
+@patch("main.supabase.table")
+def test_create_task_exception_500(mock_table):
+    from main import get_guarded_user
+    app.dependency_overrides[get_guarded_user] = override_get_guarded_user(role="admin", user_id="admin_123")
+
+    def side_effect(table_name):
+        mock_obj = MagicMock()
+        if table_name == "profiles":
+            mock_select = MagicMock()
+            mock_eq = MagicMock()
+            mock_execute = MagicMock()
+            mock_execute.execute.return_value.data = [{"id": "user_1", "role": "user", "team_id": "team_A", "is_active": True}]
+            mock_eq.eq.return_value = mock_execute
+            mock_select.select.return_value = mock_eq
+            mock_obj.select = mock_select.select
+        elif table_name == "tasks":
+            mock_insert = MagicMock()
+            mock_execute = MagicMock()
+            mock_execute.execute.side_effect = Exception("Database error")
+            mock_insert.insert.return_value = mock_execute
+            mock_obj.insert = mock_insert.insert
+        return mock_obj
+
+    mock_table.side_effect = side_effect
+
+    res = client.post("/api/tasks", json={
+        "title": "Test Error",
+        "assigned_to": "user_1"
+    })
+
+    assert res.status_code == 500
+    assert "Database error" in res.json()["detail"]
+
+    app.dependency_overrides.clear()
